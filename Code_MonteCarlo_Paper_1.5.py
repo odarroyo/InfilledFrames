@@ -28,14 +28,14 @@ records= ["GM01.txt", "GM02.txt", "GM03.txt", "GM04.txt", "GM05.txt", "GM06.txt"
 Nsteps= [3000, 3000, 2000, 2000, 5590, 5590, 4535, 4535, 9995, 9995, 7810, 7810, 4100, 4100, 4100, 4100, 5440, 5440, 6000, 6000, 2200, 2200, 11190, 11190, 7995, 7995, 7990, 7990, 2680, 2300, 8000, 8000, 2230, 2230, 1800, 1800, 18000, 18000, 18000, 18000, 2800, 2800, 7270, 7270]
 DTs= [0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.01,0.005,0.005,0.01,0.01,0.01,0.01,0.005,0.005,0.05,0.05,0.02,0.02,0.0025,0.0025,0.005,0.005,0.005,0.005,0.02,0.02,0.005,0.005,0.01,0.01,0.02,0.02,0.005,0.005,0.005,0.005,0.01,0.01,0.005,0.005]
 SpectrumFactor = [0.484640765,0.338421756,0.386628219,0.308779724,0.175089881,0.312791906,0.80124682,0.405707818,0.643528131,0.5168247,0.423242076,0.326193659,0.304726603,0.415798489,0.832332932,0.8744116,0.507859107,0.393417493,1.673192442,2.335347059,0.968938985,0.911432171,0.368427384,0.306190804,0.230296494,0.451130491,0.374317312,0.36178636,0.342996872,0.323438672,0.612739273,1.063474848,0.600833795,0.49549825,0.43118056,0.29284453,0.672893134,0.501345323,0.341215077,0.518470373,0.838847295,1.219406411,0.52935428,0.500858943]
-ScaleFactor = [1.0,1.5,2.0,2.5,3.0,3.5,4.0]
+
 index2 = range(len(records))
 
 # Elementos y nodos a grabar información
 node_record = [30,31,32]
 ele_record = [12]
 
-n = 300 #Número de modelos
+n = 150 #Número de modelos
 mfc = 21000
 cv = 0.25
 sfc = cv*mfc
@@ -56,7 +56,7 @@ for i in range(n):
 #%% Funciones de generación
 # Definir el modelo
 
-def runDyn(sf,ind,var):
+def runDyn(ind,var):
     #%% Definir el modelo - Función
     wipe()
     
@@ -329,15 +329,15 @@ def runDyn(sf,ind,var):
     # recorder('Node','-file','node92.out','-time','-node',92,'-dof',1,'disp')
       
     # dtecho2, Vbasal2, Fcol = an.pushover2(0.03*2*H, 0.001, nnode, 1, todo)
-    tiempo,techo,Eds,node_disp,node_vel,node_acel,drift = an.dinamicoIDA4P(records[ind], DTs[ind], Nsteps[ind]+100, 0.04, 9.81*SpectrumFactor[ind]*sf, 0.025, 32, 1, ele_record, node_record)
+    tiempo,techo,Eds,node_disp,node_vel,node_acel,drift = an.dinamicoIDA4P(records[ind], DTs[ind], Nsteps[ind]+100, 0.04, 9.81*SpectrumFactor[ind]*1.5, 0.025, 32, 1, ele_record, node_record)
     
-    return techo, drift, ind, sf
+    return tiempo,techo,Eds,node_disp,node_vel,node_acel,drift, fc, Fy, ind
 
 #%% Procesar pushover con todos los nucleos del Pc y en paralelo
 num_cores = multiprocessing.cpu_count() # num nucleos en el PC
 stime = time.time()
 
-resultados = Parallel(n_jobs=num_cores)(delayed(runDyn)(ss, ii, ff) for ss in ScaleFactor for ii in index2 for ff in variables) # loop paralelo
+resultados = Parallel(n_jobs=num_cores)(delayed(runDyn)(ii, ff) for ii in index2 for ff in variables) # loop paralelo
 
 etime = time.time()
 
@@ -347,72 +347,42 @@ print('tiempo de ejecucion: ',ttotal,'segundos')
 
 
 #%% Grabar resultados
-filename = '300sim2_N'
+filename = '150sim2_1.5'
 outfile = open(filename,'wb')
 pickle.dump(resultados,outfile)
 outfile.close()
 
 #%% Cargar resultados
 
-# filename = '150sim2_1.0'
+# filename = '150sim2_1.5'
 # infile = open(filename,'rb')
 # resultados = pickle.load(infile)
 # infile.close()
 
 #%% Graficar
 
-techomax = np.zeros(n*len(index2)*len(ScaleFactor))
-residual = np.zeros(n*len(index2)*len(ScaleFactor))
-drift_s1 = np.zeros(n*len(index2)*len(ScaleFactor))
-hbuild = 2.7*2
+techomax = np.zeros(n*len(index2))
+residual = np.zeros(n*len(index2))
+drift_s1 = np.zeros(n*len(index2))
+hbuild = 9
 
 # este loop procesa todos los resultados
 for index,result in enumerate(resultados):
-    dtecho = result[0]
-    drifts1 = result[1]
+    dtecho = result[1]
+    drifts1 = result[6]
     techomax[index] = np.max(np.abs(dtecho))/hbuild*100
     residual[index] = np.abs(dtecho[-1])/hbuild*100
     drift_s1[index] = np.max(np.abs(drifts1[:,0]))*100
     
 # Aquí se organizan los resultados. Cada columna es un sismo y en las filas van las simulaciones
 
-filename = '300sim2_N_techo'
-outfile = open(filename,'wb')
-pickle.dump(techomax,outfile)
-outfile.close()
-
-filename = '300sim2_N_drift'
-outfile = open(filename,'wb')
-pickle.dump(drift_s1,outfile)
-outfile.close()
-
-filename = '300sim2_N_residual'
-outfile = open(filename,'wb')
-pickle.dump(residual,outfile)
-outfile.close()
-
-filename = '300sim2_N_variables'
-outfile = open(filename,'wb')
-pickle.dump(variables,outfile)
-outfile.close()
-
-filename = '300sim2_N_todo'
-outfile = open(filename,'wb')
-pickle.dump(variables,outfile)
-pickle.dump(residual,outfile)
-pickle.dump(drift_s1,outfile)
-pickle.dump(techomax,outfile)
-outfile.close()
-
-
-# %%
 nEQ = len(index2)
 techomax2 = techomax.reshape(nEQ,n).transpose()
 residual2 = residual.reshape(nEQ,n).transpose()
 drift_s1 = drift_s1.reshape(nEQ,n).transpose()
 
 # df_techo = pd.DataFrame(data = techomax2[:,1:3])
-eqind = 9
+eqind = 2
 
 sb.boxplot(data = drift_s1[:,eqind])
 plt.ylabel('Max first story drift (%)')
@@ -464,5 +434,4 @@ plt.show()
 sb.boxplot(data = probabilities)
 # plt.ylim([1.3,1.7])
 plt.show()
-
 
